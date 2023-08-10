@@ -1,0 +1,352 @@
+---
+title: "MAS5312_Statistical_Machine_Learning_Assignment_01"
+author: "Group_1"
+output: word_document
+---
+
+## Prerequisits
+
+```{r}
+# Prerequisits
+library(ggplot2)
+library(sf)
+library(geojsonR)
+library(ggpubr)
+library(reshape2)
+library(ggcorrplot)
+library(tidyverse)
+library(dplyr)
+setwd("C:/Personal/Books/MSc. in Applied Statistics/Semester_3/MAS5312_Statistical_Machine_Learning/Dataset")
+```
+
+## Load Data
+
+```{r }
+# Load and preprocess data
+df <- read_csv('Dataset/train.csv')
+df <- df %>%  mutate(
+  id = as.character(id),
+  Driving_License = ifelse(Driving_License == 1,"Licensed","Not Licensed"),  
+  Region_Code = as.character(Region_Code),
+  Previously_Insured = ifelse(Previously_Insured == 1,"Insured","Not Insured"),  
+  Vehicle_Damage = ifelse(Vehicle_Damage == "Yes", "Damaged", "Not Damaged"),
+  Policy_Sales_Channel = as.character(Policy_Sales_Channel),
+  Response = ifelse(Response == 1, "Interested", "Not Interested")) 
+```
+
+```{r}
+summary(df)
+```
+Change data types
+```{r}
+# df <- df %>%  mutate(
+#   id = as.character(id),
+#   Driving_License = ifelse(Driving_License == 1,"Licensed","Not Licensed"),  
+#   Region_Code = as.character(Region_Code),
+#   Previously_Insured = ifelse(Previously_Insured == 1,"Insured","Not Insured"),  
+#   Vehicle_Damage = ifelse(Vehicle_Damage == "Yes", "Damaged", "Not Damaged"),
+#   Policy_Sales_Channel = as.character(Policy_Sales_Channel),
+#   Response = ifelse(Response == 1, "Interested", "Not Interested")) 
+```
+
+
+
+## Gender wise analysis
+
+Gender proportions
+
+```{r}
+df %>% group_by(Gender) %>% summarise(cnt = n()) %>% mutate(percent = cnt/sum(cnt))
+```
+```{r} 
+df %>% group_by(Gender, Response) %>% summarise(cnt = n()) %>% mutate(percent = cnt/sum(cnt))
+```
+
+
+## Age analysis
+
+```{r}
+# Figure 1: Gender wise age distribution
+df %>% select(Gender,Age) %>% arrange(Gender) %>% 
+  ggplot(aes(Age)) +
+  geom_boxplot(mapping = aes(x = Age, y = Gender , fill = Gender))+
+  labs(title = "Gender wise age distributions",
+       x = "Age",
+       y = NULL) +
+  theme_minimal() +
+  theme(legend.position="none")
+```
+
+```{r}
+# Gender wise age quartile margins
+df %>% filter(Gender=='Male') %>% select(Age) %>% quantile(na.rm = TRUE)
+df %>% filter(Gender=='Female') %>% select(Age) %>% quantile(na.rm = TRUE)
+```
+```{r}
+#df[1:10]
+```
+```{r}
+# Define gender wise age quartile categories
+df_age <- df %>% select('Gender', 'Age', 'Response')
+df_age$Age_Quartile <- cut(
+  df_age$Age,
+  quantile(df_age$Age),include.lowest=TRUE,labels= c('1','2','3','4'))
+```
+
+
+```{r}
+df_age %>% group_by(Gender, Age_Quartile) %>% summarise(cnt = n()) %>% mutate(percent = cnt/sum(cnt))
+```
+```{r}
+df_age
+```
+
+
+```{r}
+df_age_m <- df %>% filter(Gender=='Male') %>% select('Gender', 'Age', 'Response')
+df_age_m$Age_Quartile <- cut(df_age_m$Age,quantile(df_age_m$Age),include.lowest=TRUE,labels= c('1','2','3','4'))
+
+df_age_f <- df %>% filter(Gender=='Female') %>% select('Gender', 'Age', 'Response')
+df_age_f$Age_Quartile <- cut(df_age_f$Age,quantile(df_age_f$Age),include.lowest=TRUE,labels= c('1','2','3','4'))
+
+df_age = rbind(df_age_m,df_age_f)
+
+df_age %>% group_by(Gender, Age_Quartile, Response) %>% summarise(cnt = n()) %>% mutate(percent = cnt/sum(cnt)*100) %>% 
+  ggplot(aes(x=Age_Quartile, y=percent, fill=Response)) +
+  geom_bar(position="dodge", stat="identity") + facet_wrap(~Gender, ncol=2) +
+  geom_text(aes(label = paste(round(percent,2), "%")),vjust = -.5) +
+  labs(title = "Age quartile wise male and female responses", x = "Age Quartile") +
+  theme_minimal()+
+  theme(
+      strip.text = element_text(face = 'bold'),
+      plot.caption = element_text(face = 'italic'),
+      panel.grid.major = element_line('white', size = 0.5),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      axis.text.y=element_blank(),
+      axis.ticks.y=element_blank()
+    )
+```
+```{r}
+df_age %>% filter(Response=="Interested")%>% group_by(Gender, Age_Quartile) %>% summarise(cnt = n()) %>% mutate(percent = cnt/sum(cnt)*100) %>% 
+  ggplot(aes(x=Age_Quartile, y=percent, fill=Gender)) +
+  geom_bar(position="dodge", stat="identity") + facet_wrap(~Gender, ncol=2) +
+  geom_text(aes(label = paste(round(percent,2), "%")),vjust = -.5) +
+  labs(title = "Positive responses - male and female age quartile percentages", x = "Age Quartile") +
+  theme_minimal()+
+  theme(
+      strip.text = element_text(face = 'bold'),
+      plot.caption = element_text(face = 'italic'),
+      panel.grid.major = element_line('white', size = 0.5),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      axis.text.y=element_blank(),
+      axis.ticks.y=element_blank()
+    )
+```
+
+
+
+## Area wise analysis
+```{r}
+d1 <- df %>% group_by(Region_Code, Response) %>% summarise(cnt = n()) %>%
+  mutate(percent = cnt/sum(cnt)*100) %>% arrange(Region_Code) 
+d1 <- d1 %>%  mutate(order = as.numeric(Region_Code))
+
+d2 <- d1 %>% filter(Response=='Not Interested') %>% select(percent)
+
+d1 %>% ggplot(aes(x= reorder(Region_Code, order), y=percent, fill=Response)) +
+  geom_bar(stat="identity")+
+  labs(title = "Region wise Response Percentages", y = "%", x="Region Code") +
+  theme(
+      strip.text = element_text(face = 'bold'),
+      plot.caption = element_text(face = 'italic'),
+      panel.grid.major = element_line('white', size = 0.5),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+    )+
+  geom_hline(aes(yintercept=mean(d2$percent))) + 
+  annotate("text", x=50, y=round(mean(d2$percent),2)-2,
+           label=paste(round(mean(d2$percent),2),"%"))+
+  geom_hline(yintercept=mean(d2$percent)-2*sd(d2$percent), linetype='dotted') +
+  annotate("text", x=50, y=mean(d2$percent)-2*sd(d2$percent), label="-2*sd") +
+  geom_hline(yintercept=mean(d2$percent)+2*sd(d2$percent), linetype='dotted') +
+  annotate("text", x=50, y=mean(d2$percent)+2*sd(d2$percent), label="+2*sd")
+
+ggsave("region_wise_response.jpg", width = 30, height = 10, units = "cm")
+```
+```{r}
+print(sd(d2$percent))
+```
+
+
+
+## Insurance impact on Response
+```{r}
+df %>% group_by(Previously_Insured, Response) %>% summarise(cnt = n()) %>% 
+  mutate(percent = cnt/sum(cnt)*100)
+```
+
+
+```{r}
+df %>% group_by(Previously_Insured, Response) %>% summarise(cnt = n()) %>% 
+  mutate(percent = cnt/sum(cnt)*100) %>% 
+  ggplot(aes(x=Response, y=percent, fill=Response)) +
+  geom_bar(position="dodge", stat="identity") + 
+  facet_wrap(~Previously_Insured, ncol=2) +
+  geom_text(aes(label = paste(round(percent,2), "%")),vjust = -.5) +
+  labs(title = "Previously Insured Status effect on Response", y = NULL) +
+  theme_minimal()+
+  theme(
+      strip.text = element_text(face = 'bold'),
+      plot.caption = element_text(face = 'italic'),
+      panel.grid.major = element_line('white', size = 0.5),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      axis.text.y=element_blank(),
+      axis.ticks.y=element_blank()
+    )
+```
+## Figure 6: Driving license status effect on the response
+```{r}
+df %>% group_by(Driving_License) %>% summarise(avg_age = mean(Age))
+
+df %>% group_by(Driving_License, Response) %>% summarise(cnt = n()) %>% 
+  mutate(percent = cnt/sum(cnt)*100) %>% 
+  ggplot(aes(x=Response, y=percent, fill=Response)) +
+  geom_bar(position="dodge", stat="identity") + 
+  facet_wrap(~Driving_License, ncol=2) +
+  geom_text(aes(label = paste(round(percent,2), "%")),vjust = -.5) +
+  labs(title = "Driving License status effect on Response", y = NULL) +
+  theme_minimal()+
+  theme(
+      strip.text = element_text(face = 'bold'),
+      plot.caption = element_text(face = 'italic'),
+      panel.grid.major = element_line('white', size = 0.5),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      axis.text.y=element_blank(),
+      axis.ticks.y=element_blank()
+    )
+```
+## Vehicle Age impact on Premium and Response
+```{r}
+df %>% group_by(Vehicle_Age) %>% summarise(avg_premium = mean(Annual_Premium))
+
+d3 <- df %>% group_by(Vehicle_Age, Response) %>% summarise(cnt = n()) %>%
+  mutate(percent = cnt/sum(cnt)*100)
+d3 <- d3 %>%  mutate(age_order = case_when(Vehicle_Age=="< 1 Year"~1,
+                                             Vehicle_Age=="1-2 Year"~2,
+                                             TRUE ~ 3))
+
+d3 %>% ggplot(aes(x=reorder(Vehicle_Age, age_order), y=percent, fill=Response))+
+  geom_bar(position="dodge", stat="identity") +
+  geom_text(aes(label = paste(round(percent,2), "%")),vjust = -.5) +
+  labs(title = "Vehicle Age impact on Premium and Response", x="Vehicle Age") +
+  theme_minimal()+
+  theme(
+      strip.text = element_text(face = 'bold'),
+      plot.caption = element_text(face = 'italic'),
+      panel.grid.major = element_line('white', size = 0.5),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      axis.text.y=element_blank(),
+      axis.ticks.y=element_blank()
+    )
+```
+
+
+## Vehicle Damage impact on Premium and Response
+```{r}
+df %>% group_by(Vehicle_Damage) %>% 
+  summarise(Average_Premium = mean(Annual_Premium))
+
+df %>% group_by(Vehicle_Damage, Response) %>% summarise(cnt = n()) %>%
+  mutate(percent = cnt/sum(cnt)*100) %>% 
+  ggplot(aes(x=Vehicle_Damage, y=percent, fill=Response)) +
+  geom_bar(position="dodge", stat="identity") + 
+  #scale_x_discrete(labels=c("< 1 Year", "1-2 Year", "> 2 Years")) +
+  geom_text(aes(label = paste(round(percent,2), "%")),vjust = -.5) +
+  labs(title = "Damage Status impact on Premium and Response", 
+       x="Vehicle Condition") +
+  theme_minimal()+
+  theme(
+      strip.text = element_text(face = 'bold'),
+      plot.caption = element_text(face = 'italic'),
+      panel.grid.major = element_line('white', size = 0.5),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      axis.text.y=element_blank(),
+      axis.ticks.y=element_blank()
+    )
+```
+
+
+## Driving License impact on Premium and Response
+```{r}
+df %>% group_by(Driving_License) %>% 
+  summarise(Average_Premium = mean(Annual_Premium))
+
+df %>% group_by(Driving_License, Response) %>% summarise(cnt = n()) %>% 
+  mutate(percent = cnt/sum(cnt)*100) %>%
+  ggplot(aes(x=Driving_License, y=percent, fill=Response)) +
+  geom_bar(position="dodge", stat="identity") +
+  geom_text(aes(label = paste(round(percent,2), "%")),vjust = -.5) +
+  labs(title = "Driving License impact on Premium and Response", 
+       x="Driving License Status") +
+  theme_minimal()+
+  theme(
+      strip.text = element_text(face = 'bold'),
+      plot.caption = element_text(face = 'italic'),
+      panel.grid.major = element_line('white', size = 0.5),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+      axis.text.y=element_blank(),
+      axis.ticks.y=element_blank()
+    )
+```
+## Sales Channel impact on Response
+```{r}
+d4 <- df %>% group_by(Policy_Sales_Channel, Response) %>% 
+  summarise(cnt = n()) %>% mutate(percent = cnt/sum(cnt)*100) %>% 
+  arrange(percent) 
+
+df %>% select(Policy_Sales_Channel) %>% unique() %>% count()
+
+df %>% group_by(Policy_Sales_Channel) %>% summarise(cnt = n()) %>% 
+  filter((cnt>=100)) %>% count()
+
+d4 %>% filter((Response=="Interested") & (cnt>=100) & (percent>=15)) %>% 
+  select(Policy_Sales_Channel)  %>% unique() %>% count()
+
+d4 %>% filter((Response=="Interested") & (cnt>=100)) %>% 
+  arrange(desc(percent)) %>% 
+  ggplot(aes(x= reorder(Policy_Sales_Channel, percent), 
+             y=percent, fill=Response)) +
+  geom_bar(stat="identity")+
+  coord_flip()+
+  labs(
+    title ="Sales channels with higher positive responses(min 100 responses)", 
+    y = "%", x="Sales Channel") +
+  theme_minimal()+
+  theme(
+      strip.text = element_text(face = 'bold'),
+      plot.caption = element_text(face = 'italic'),
+      panel.grid.major = element_line('white', size = 0.5),
+      panel.grid.minor = element_blank(),
+      panel.grid.major.x = element_blank(),
+    )
+```
+```{r}
+df %>% select(Response,Vintage) %>% arrange(Response) %>% 
+  ggplot(aes(Vintage)) +
+  geom_boxplot(mapping = aes(x = Vintage, y = Response , fill = Response))+
+  labs(title = "Vintage Distribution",
+       x = "Vintage",
+       y = NULL) +
+  theme_minimal() +
+  theme(legend.position="none")
+```
+
+
+
